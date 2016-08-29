@@ -139,9 +139,10 @@
         if (!txLock) {
           console.log('cannot start next transaction: database connection is lost');
           return;
-        } else if (txLock.queue.length > 0 && !txLock.inProgress) {
-          txLock.inProgress = true;
-          txLock.queue.shift().start();
+        } else {
+            while (txLock.queue.length > 0) {
+              txLock.queue.shift().start();
+            }
         }
       };
     })(this));
@@ -186,7 +187,7 @@
             success(_this);
           }
           txLock = txLocks[_this.dbname];
-          if (!!txLock && txLock.queue.length > 0 && !txLock.inProgress) {
+          if (!!txLock && txLock.queue.length > 0) {
             _this.startNextTransaction();
           }
         };
@@ -322,8 +323,6 @@
       this.run();
     } catch (error1) {
       err = error1;
-      txLocks[this.db.dbname].inProgress = false;
-      this.db.startNextTransaction();
       if (this.error) {
         this.error(newSQLError(err));
       }
@@ -476,15 +475,11 @@
     }
     tx = this;
     succeeded = function(tx) {
-      txLocks[tx.db.dbname].inProgress = false;
-      tx.db.startNextTransaction();
       if (tx.error) {
         tx.error(txFailure);
       }
     };
     failed = function(tx, err) {
-      txLocks[tx.db.dbname].inProgress = false;
-      tx.db.startNextTransaction();
       if (tx.error) {
         tx.error(newSQLError("error while trying to roll back: " + err.message, err.code));
       }
@@ -505,15 +500,11 @@
     }
     tx = this;
     succeeded = function(tx) {
-      txLocks[tx.db.dbname].inProgress = false;
-      tx.db.startNextTransaction();
       if (tx.success) {
         tx.success();
       }
     };
     failed = function(tx, err) {
-      txLocks[tx.db.dbname].inProgress = false;
-      tx.db.startNextTransaction();
       if (tx.error) {
         tx.error(newSQLError("error while trying to commit: " + err.message, err.code));
       }
