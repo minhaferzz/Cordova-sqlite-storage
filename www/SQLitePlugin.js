@@ -140,8 +140,19 @@
           console.log('cannot start next transaction: database connection is lost');
           return;
         } else {
-            while (txLock.queue.length > 0) {
-              txLock.queue.shift().start();
+            var i = 0;
+            while (i < txLock.queue.length) {
+              if (txLock.queue[i].readOnly) {
+                // if it's read-only, start away
+                txLock.queue.splice(i, 1)[0].start();
+              } else if (!txLock.inProgress) {
+                // if it's writeable, only start if no writeable started
+                txLock.inProgress = true;
+                txLock.queue.splice(i, 1)[0].start();
+              } else {
+                // otherwise don't start the transaction yet
+                i++;
+              }
             }
         }
       };
@@ -323,6 +334,10 @@
       this.run();
     } catch (error1) {
       err = error1;
+      if (!this.readOnly) {
+        txLocks[this.db.dbname].inProgress = false;
+        this.db.startNextTransaction();
+      }
       if (this.error) {
         this.error(newSQLError(err));
       }
@@ -475,11 +490,19 @@
     }
     tx = this;
     succeeded = function(tx) {
+      if (!tx.readOnly) {
+        txLocks[tx.db.dbname].inProgress = false;
+        tx.db.startNextTransaction();
+      }
       if (tx.error) {
         tx.error(txFailure);
       }
     };
     failed = function(tx, err) {
+      if (!tx.readOnly) {
+        txLocks[tx.db.dbname].inProgress = false;
+        tx.db.startNextTransaction();
+      }
       if (tx.error) {
         tx.error(newSQLError("error while trying to roll back: " + err.message, err.code));
       }
@@ -500,11 +523,19 @@
     }
     tx = this;
     succeeded = function(tx) {
+      if (!tx.readOnly) {
+        txLocks[tx.db.dbname].inProgress = false;
+        tx.db.startNextTransaction();
+      }
       if (tx.success) {
         tx.success();
       }
     };
     failed = function(tx, err) {
+      if (!tx.readOnly) {
+        txLocks[tx.db.dbname].inProgress = false;
+        tx.db.startNextTransaction();
+      }
       if (tx.error) {
         tx.error(newSQLError("error while trying to commit: " + err.message, err.code));
       }
