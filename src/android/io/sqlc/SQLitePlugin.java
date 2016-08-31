@@ -130,7 +130,7 @@ public class SQLitePlugin extends CordovaPlugin {
 
                     // put db query in the queue to be executed in the db thread:
                     DBQuery q = new DBQuery(queries, jsonparams, cbc);
-                    DBRunner r = dbrmap.get(dbname);
+                    DBRunner r = dbrmap.get(getDBRunnerName(dbname, dbargs));
                     if (r != null) {
                         try {
                             r.q.put(q);
@@ -154,18 +154,18 @@ public class SQLitePlugin extends CordovaPlugin {
     @Override
     public void onDestroy() {
         while (!dbrmap.isEmpty()) {
-            String dbname = dbrmap.keySet().iterator().next();
+            String dbRunnerName = dbrmap.keySet().iterator().next();
 
-            this.closeDatabaseNow(dbname);
+            this.closeDatabaseNow(dbRunnerName);
 
-            DBRunner r = dbrmap.get(dbname);
+            DBRunner r = dbrmap.get(dbRunnerName);
             try {
                 // stop the db runner thread:
                 r.q.put(new DBQuery());
             } catch(Exception e) {
                 Log.e(SQLitePlugin.class.getSimpleName(), "couldn't stop db thread", e);
             }
-            dbrmap.remove(dbname);
+            dbrmap.remove(dbRunnerName);
         }
     }
 
@@ -173,10 +173,12 @@ public class SQLitePlugin extends CordovaPlugin {
     // LOCAL METHODS
     // --------------------------------------------------------------------------
 
-    private void startDatabase(String dbname, JSONObject options, CallbackContext cbc) {
+    private void startDatabase(String dbname, JSONObject options, CallbackContext cbc) throws JSONException {
+        String runnerName = getDBRunnerName(dbname, options);
+
         // TODO: is it an issue that we can orphan an existing thread?  What should we do here?
         // If we re-use the existing DBRunner it might be in the process of closing...
-        DBRunner r = dbrmap.get(dbname);
+        DBRunner r = dbrmap.get(runnerName);
 
         // Brody TODO: It may be better to terminate the existing db thread here & start a new one, instead.
         if (r != null) {
@@ -185,8 +187,8 @@ public class SQLitePlugin extends CordovaPlugin {
             // than orphaning the old DBRunner.
             cbc.success();
         } else {
-            r = new DBRunner(dbname, options, cbc);
-            dbrmap.put(dbname, r);
+            r = new DBRunner(dbname, runnerName, options, cbc);
+            dbrmap.put(runnerName, r);
             this.cordova.getThreadPool().execute(r);
         }
     }
@@ -225,10 +227,10 @@ public class SQLitePlugin extends CordovaPlugin {
     /**
      * Close a database (in another thread).
      *
-     * @param dbName   The name of the database file
+     * @param dbRunerName   The name of the database connection runner
      */
-    private void closeDatabase(String dbname, CallbackContext cbc) {
-        DBRunner r = dbrmap.get(dbname);
+    private void closeDatabase(String dbRunerName, CallbackContext cbc) {
+        DBRunner r = dbrmap.get(dbRunerName);
         if (r != null) {
             try {
                 r.q.put(new DBQuery(false, cbc));
@@ -248,10 +250,10 @@ public class SQLitePlugin extends CordovaPlugin {
     /**
      * Close a database (in the current thread).
      *
-     * @param dbname   The name of the database file
+     * @param dbRunerName   The name of the database connection runner
      */
-    private void closeDatabaseNow(String dbname) {
-        DBRunner r = dbrmap.get(dbname);
+    private void closeDatabaseNow(String dbRunerName) {
+        DBRunner r = dbrmap.get(dbRunerName);
 
         if (r != null) {
             SQLiteAndroidDatabase mydb = r.mydb;
@@ -299,9 +301,19 @@ public class SQLitePlugin extends CordovaPlugin {
             return false;
         }
     }
+    
+    private static String getDBRunnerName(String dbname, JSONObject options) {
+      String connectionName = options.optString("connectionName");
+      if (connectionName != null) {
+        return dbname + "_" + connectionName;
+      } else {
+        return dbname;
+      }
+    }
 
     private class DBRunner implements Runnable {
         final String dbname;
+        final String runnerName;
         private boolean oldImpl;
         private boolean bugWorkaround;
 
@@ -310,8 +322,9 @@ public class SQLitePlugin extends CordovaPlugin {
 
         SQLiteAndroidDatabase mydb;
 
-        DBRunner(final String dbname, JSONObject options, CallbackContext cbc) {
+        DBRunner(final String dbname, final String runnerName, JSONObject options, CallbackContext cbc) {
             this.dbname = dbname;
+            this.runnerName = runnerName;
             this.oldImpl = options.has("androidOldDatabaseImplementation");
             Log.v(SQLitePlugin.class.getSimpleName(), "Android db implementation: built-in android.database.sqlite package");
             this.bugWorkaround = this.oldImpl && options.has("androidBugWorkaround");
@@ -327,7 +340,7 @@ public class SQLitePlugin extends CordovaPlugin {
                 this.mydb = openDatabase(dbname, this.openCbc, this.oldImpl);
             } catch (Exception e) {
                 Log.e(SQLitePlugin.class.getSimpleName(), "unexpected error, stopping db thread", e);
-                dbrmap.remove(dbname);
+                dbrmap.remove(runnerName);
                 return;
             }
 
@@ -337,21 +350,14 @@ public class SQLitePlugin extends CordovaPlugin {
                 dbq = q.take();
 
                 while (!dbq.stop) {
-                    final DBQuery currDbq = dbq;
-                    final boolean currBugWorkaround = this.bugWorkaround;
-                    cordova.getThreadPool().execute(new Runnable() {
-                        @Override
-                        public void run() {
-                            try {
-                                mydb.executeSqlBatch(currDbq.queries, currDbq.jsonparams, currDbq.cbc);
+                    try {
+                        mydb.executeSqlBatch(dbq.queries, dbq.jsonparams, dbq.cbc);
 
-                                if (currBugWorkaround && currDbq.queries.length == 1 && currDbq.queries[0] == "COMMIT")
-                                    mydb.bugWorkaround();
-                            } catch (Exception e) {
-                                Log.e(SQLitePlugin.class.getSimpleName(), "unexpected error", e);
-                            }
-                        }
-                    });
+                        if (this.bugWorkaround && dbq.queries.length == 1 && dbq.queries[0] == "COMMIT")
+                            mydb.bugWorkaround();
+                    } catch (Exception e) {
+                        Log.e(SQLitePlugin.class.getSimpleName(), "unexpected error", e);
+                    }
 
                     dbq = q.take();
                 }
@@ -361,9 +367,9 @@ public class SQLitePlugin extends CordovaPlugin {
 
             if (dbq != null && dbq.close) {
                 try {
-                    closeDatabaseNow(dbname);
+                    closeDatabaseNow(runnerName);
 
-                    dbrmap.remove(dbname); // (should) remove ourself
+                    dbrmap.remove(runnerName); // (should) remove ourself
 
                     if (!dbq.delete) {
                         dbq.cbc.success();

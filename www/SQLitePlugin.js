@@ -73,6 +73,7 @@
     }
     this.openargs = openargs;
     this.dbname = dbname;
+    this.connectionName = openargs['connectionName'];
     this.openSuccess = openSuccess;
     this.openError = openError;
     this.openSuccess || (this.openSuccess = function() {
@@ -175,47 +176,38 @@
 
   SQLitePlugin.prototype.open = function(success, error) {
     var openerrorcb, opensuccesscb;
-    if (this.dbname in this.openDBs) {
-      console.log('database already open: ' + this.dbname);
-      nextTick((function(_this) {
-        return function() {
+    console.log('OPEN database: ' + this.dbname);
+    opensuccesscb = (function(_this) {
+      return function() {
+        var txLock;
+        console.log('OPEN database: ' + _this.dbname + ' - OK');
+        if (!_this.openDBs[_this.dbname]) {
+          console.log('database was closed during open operation');
+        }
+        if (_this.dbname in _this.openDBs) {
+          _this.openDBs[_this.dbname] = DB_STATE_OPEN;
+        }
+        if (!!success) {
           success(_this);
-        };
-      })(this));
-    } else {
-      console.log('OPEN database: ' + this.dbname);
-      opensuccesscb = (function(_this) {
-        return function() {
-          var txLock;
-          console.log('OPEN database: ' + _this.dbname + ' - OK');
-          if (!_this.openDBs[_this.dbname]) {
-            console.log('database was closed during open operation');
-          }
-          if (_this.dbname in _this.openDBs) {
-            _this.openDBs[_this.dbname] = DB_STATE_OPEN;
-          }
-          if (!!success) {
-            success(_this);
-          }
-          txLock = txLocks[_this.dbname];
-          if (!!txLock && txLock.queue.length > 0) {
-            _this.startNextTransaction();
-          }
-        };
-      })(this);
-      openerrorcb = (function(_this) {
-        return function() {
-          console.log('OPEN database: ' + _this.dbname + ' FAILED, aborting any pending transactions');
-          if (!!error) {
-            error(newSQLError('Could not open database'));
-          }
-          delete _this.openDBs[_this.dbname];
-          _this.abortAllPendingTransactions();
-        };
-      })(this);
-      this.openDBs[this.dbname] = DB_STATE_INIT;
-      cordova.exec(opensuccesscb, openerrorcb, "SQLitePlugin", "open", [this.openargs]);
-    }
+        }
+        txLock = txLocks[_this.dbname];
+        if (!!txLock && txLock.queue.length > 0) {
+          _this.startNextTransaction();
+        }
+      };
+    })(this);
+    openerrorcb = (function(_this) {
+      return function() {
+        console.log('OPEN database: ' + _this.dbname + ' FAILED, aborting any pending transactions');
+        if (!!error) {
+          error(newSQLError('Could not open database'));
+        }
+        delete _this.openDBs[_this.dbname];
+        _this.abortAllPendingTransactions();
+      };
+    })(this);
+    this.openDBs[this.dbname] = DB_STATE_INIT;
+    cordova.exec(opensuccesscb, openerrorcb, "SQLitePlugin", "open", [this.openargs]);
   };
 
   SQLitePlugin.prototype.close = function(success, error) {
@@ -476,7 +468,8 @@
     cordova.exec(mycb, null, "SQLitePlugin", "backgroundExecuteSqlBatch", [
       {
         dbargs: {
-          dbname: this.db.dbname
+          dbname: this.db.dbname,
+          connectionName: this.db.connectionName
         },
         executes: tropts
       }
