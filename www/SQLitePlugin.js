@@ -73,7 +73,6 @@
     }
     this.openargs = openargs;
     this.dbname = dbname;
-    this.connectionName = openargs['connectionName'];
     this.openSuccess = openSuccess;
     this.openError = openError;
     this.openSuccess || (this.openSuccess = function() {
@@ -95,11 +94,12 @@
     if (!txLocks[this.dbname]) {
       txLocks[this.dbname] = {
         queue: [],
+        availableConnections: this.openDBs[this.dbname].connections,
         inProgress: false
       };
     }
     txLocks[this.dbname].queue.push(t);
-    if (this.dbname in this.openDBs && this.openDBs[this.dbname] !== DB_STATE_INIT) {
+    if (this.dbname in this.openDBs && this.openDBs[this.dbname].state !== DB_STATE_INIT) {
       this.startNextTransaction();
     } else {
       if (this.dbname in this.openDBs) {
@@ -132,7 +132,7 @@
     nextTick((function(_this) {
       return function() {
         var txLock;
-        if (!(_this.dbname in _this.openDBs) || _this.openDBs[_this.dbname] !== DB_STATE_OPEN) {
+        if (!(_this.dbname in _this.openDBs) || _this.openDBs[_this.dbname].state !== DB_STATE_OPEN) {
           console.log('cannot start next transaction: database not open');
           return;
         }
@@ -142,14 +142,16 @@
           return;
         } else {
             var i = 0;
-            while (i < txLock.queue.length) {
+            while (i < txLock.queue.length && txLock.availableConnections.length > 0) {
               if (txLock.queue[i].readOnly) {
                 // if it's read-only, start away
-                txLock.queue.splice(i, 1)[0].start();
+                var connectionName = txLock.availableConnections.shift();
+                txLock.queue.splice(i, 1)[0].start(connectionName);
               } else if (!txLock.inProgress) {
                 // if it's writeable, only start if no writeable started
+                var connectionName = txLock.availableConnections.shift();
                 txLock.inProgress = true;
-                txLock.queue.splice(i, 1)[0].start();
+                txLock.queue.splice(i, 1)[0].start(connectionName);
               } else {
                 // otherwise don't start the transaction yet
                 i++;
@@ -176,38 +178,70 @@
 
   SQLitePlugin.prototype.open = function(success, error) {
     var openerrorcb, opensuccesscb;
-    console.log('OPEN database: ' + this.dbname);
-    opensuccesscb = (function(_this) {
-      return function() {
-        var txLock;
-        console.log('OPEN database: ' + _this.dbname + ' - OK');
-        if (!_this.openDBs[_this.dbname]) {
-          console.log('database was closed during open operation');
-        }
-        if (_this.dbname in _this.openDBs) {
-          _this.openDBs[_this.dbname] = DB_STATE_OPEN;
-        }
-        if (!!success) {
+    if (this.dbname in this.openDBs) {
+      console.log('database already open: ' + this.dbname);
+      nextTick((function(_this) {
+        return function() {
           success(_this);
-        }
-        txLock = txLocks[_this.dbname];
-        if (!!txLock && txLock.queue.length > 0) {
-          _this.startNextTransaction();
-        }
+        };
+      })(this));
+    } else {
+      var maxConnections = 4;
+      
+      console.log('OPEN database: ' + this.dbname);
+      opensuccesscb = (function(_this) {
+        return function(connectionName) {
+            return function() {
+              var txLock;
+              console.log('OPEN database: ' + _this.dbname + ', connection: ' + connectionName + ' - OK');
+              if (!_this.openDBs[_this.dbname]) {
+                console.log('database was closed during open operation');
+              }
+              if (_this.dbname in _this.openDBs) {
+                _this.openDBs[_this.dbname].state = DB_STATE_OPEN;
+                _this.openDBs[_this.dbname].connections.push(connectionName);
+              }
+              if (maxConnections > 1) {
+                // Otherwise readers will be blocked by writers
+                _this.executeSql('PRAGMA journal_mode = WAL;', []);
+              }
+              if (!!success) {
+                success(_this);
+              }
+              txLock = txLocks[_this.dbname];
+              if (!!txLock && txLock.queue.length > 0) {
+                _this.startNextTransaction();
+              }
+            };
+        };
+      })(this);
+      openerrorcb = (function(_this) {
+        return function() {
+          console.log('OPEN database: ' + _this.dbname + ' FAILED, aborting any pending transactions');
+          if (!!error) {
+            error(newSQLError('Could not open database'));
+          }
+          delete _this.openDBs[_this.dbname];
+          _this.abortAllPendingTransactions();
+        };
+      })(this);
+      this.openDBs[this.dbname] = { 
+        state: DB_STATE_INIT,
+        connections: []
       };
-    })(this);
-    openerrorcb = (function(_this) {
-      return function() {
-        console.log('OPEN database: ' + _this.dbname + ' FAILED, aborting any pending transactions');
-        if (!!error) {
-          error(newSQLError('Could not open database'));
-        }
-        delete _this.openDBs[_this.dbname];
-        _this.abortAllPendingTransactions();
-      };
-    })(this);
-    this.openDBs[this.dbname] = DB_STATE_INIT;
-    cordova.exec(opensuccesscb, openerrorcb, "SQLitePlugin", "open", [this.openargs]);
+
+      var options = {};
+      for (var key in this.openargs) {
+        options[key] = this.openargs[key];
+      }
+
+      for (var i = 0; i < maxConnections; i++) {
+        var connectionName = 'connection' + i;
+        options['connectionName'] = connectionName;
+
+        cordova.exec(opensuccesscb(connectionName), openerrorcb, "SQLitePlugin", "open", [options]);
+      }
+    }
   };
 
   SQLitePlugin.prototype.close = function(success, error) {
@@ -319,21 +353,31 @@
     }
   };
 
-  SQLitePluginTransaction.prototype.start = function() {
+  SQLitePluginTransaction.prototype.start = function(connectionName) {
     var err, error1;
     try {
+      this.connectionName = connectionName;
       this.fn(this);
       this.run();
     } catch (error1) {
       err = error1;
-      if (!this.readOnly) {
-        txLocks[this.db.dbname].inProgress = false;
-        this.db.startNextTransaction();
-      }
+      this.releaseConnection();
       if (this.error) {
         this.error(newSQLError(err));
       }
     }
+  };
+
+  SQLitePluginTransaction.prototype.releaseConnection = function() {
+    var txLock = txLocks[this.db.dbname];
+    if (!this.readOnly) {
+      txLock.inProgress = false;
+    }
+    
+    txLock.availableConnections.push(this.connectionName);
+    this.connectionName = null;
+
+    this.db.startNextTransaction();
   };
 
   SQLitePluginTransaction.prototype.executeSql = function(sql, values, success, error) {
@@ -469,7 +513,7 @@
       {
         dbargs: {
           dbname: this.db.dbname,
-          connectionName: this.db.connectionName
+          connectionName: this.connectionName
         },
         executes: tropts
       }
@@ -483,19 +527,13 @@
     }
     tx = this;
     succeeded = function(tx) {
-      if (!tx.readOnly) {
-        txLocks[tx.db.dbname].inProgress = false;
-        tx.db.startNextTransaction();
-      }
+      tx.releaseConnection();
       if (tx.error) {
         tx.error(txFailure);
       }
     };
     failed = function(tx, err) {
-      if (!tx.readOnly) {
-        txLocks[tx.db.dbname].inProgress = false;
-        tx.db.startNextTransaction();
-      }
+      tx.releaseConnection();
       if (tx.error) {
         tx.error(newSQLError("error while trying to roll back: " + err.message, err.code));
       }
@@ -516,19 +554,13 @@
     }
     tx = this;
     succeeded = function(tx) {
-      if (!tx.readOnly) {
-        txLocks[tx.db.dbname].inProgress = false;
-        tx.db.startNextTransaction();
-      }
+      tx.releaseConnection();
       if (tx.success) {
         tx.success();
       }
     };
     failed = function(tx, err) {
-      if (!tx.readOnly) {
-        txLocks[tx.db.dbname].inProgress = false;
-        tx.db.startNextTransaction();
-      }
+      tx.releaseConnection();
       if (tx.error) {
         tx.error(newSQLError("error while trying to commit: " + err.message, err.code));
       }
