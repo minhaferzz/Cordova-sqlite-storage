@@ -125,7 +125,8 @@
         pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:@"You must specify database name"];
     }
     else {
-        NSValue *dbPointer = [openDBs objectForKey:dbfilename];
+        NSString *dbConnectionName = [SQLitePlugin getDbConnectionNameForDb: dbfilename withOptions: options];
+        NSValue *dbPointer = [openDBs objectForKey: dbConnectionName];
 
         if (dbPointer != NULL) {
             DLog(@"Reusing existing database connection for db name %@", dbfilename);
@@ -149,7 +150,7 @@
                 // Attempt to read the SQLite master table [to support SQLCipher version]:
                 if(sqlite3_exec(db, (const char*)"SELECT count(*) FROM sqlite_master;", NULL, NULL, NULL) == SQLITE_OK) {
                     dbPointer = [NSValue valueWithPointer:db];
-                    [openDBs setObject: dbPointer forKey: dbfilename];
+                    [openDBs setObject: dbPointer forKey: dbConnectionName];
                     pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:@"Database opened"];
                 } else {
                     pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Unable to open DB with key"];
@@ -317,7 +318,8 @@
 
     NSMutableArray *params = [options objectForKey:@"params"]; // optional
 
-    NSValue *dbPointer = [openDBs objectForKey:dbFileName];
+    NSString *dbConnectionName = [SQLitePlugin getDbConnectionNameForDb: dbFileName withOptions: dbargs];
+    NSValue *dbPointer = [openDBs objectForKey: dbConnectionName];
     if (dbPointer == NULL) {
         return [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"No such database, you must open it first"];
     }
@@ -550,6 +552,17 @@
             return CONSTRAINT_ERR;
         default:
             return UNKNOWN_ERR;
+    }
+}
+
++(NSString*)getDbConnectionNameForDb:(NSString*)dbName
+                         withOptions:(NSMutableDictionary*)options
+{
+    NSString *connectionName = [options objectForKey:@"connectionName"];
+    if (connectionName == NULL) {
+        return dbName;
+    } else {
+        return [[dbName stringByAppendingString:@"_"] stringByAppendingString:connectionName];
     }
 }
 
