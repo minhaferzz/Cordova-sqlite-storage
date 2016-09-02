@@ -251,18 +251,31 @@
         error(newSQLError('database cannot be closed while a transaction is in progress'));
         return;
       }
+
+      var connections = this.openDBs[this.dbname].connections;
+
       console.log('CLOSE database: ' + this.dbname);
       delete this.openDBs[this.dbname];
+
       if (txLocks[this.dbname]) {
         console.log('closing db with transaction queue length: ' + txLocks[this.dbname].queue.length);
       } else {
         console.log('closing db with no transaction lock state');
       }
-      cordova.exec(success, error, "SQLitePlugin", "close", [
-        {
-          path: this.dbname
-        }
-      ]);
+      
+      var dbname = this.dbname;
+      var closePromises = connections.map(function (connectionName) { 
+        return new Promise(function (resolve, reject) {
+          cordova.exec(resolve, reject, "SQLitePlugin", "close", [
+            {
+              dbname: dbname,
+              connectionName: connectionName
+            }
+          ]);
+        });
+      });
+      
+      Promise.all(closePromises).then(success).catch(error);
     } else {
       console.log('cannot close: database is not open');
       if (error) {

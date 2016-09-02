@@ -184,14 +184,15 @@
     CDVPluginResult* pluginResult = nil;
     NSMutableDictionary *options = [command.arguments objectAtIndex:0];
 
-    NSString *dbFileName = [options objectForKey:@"path"];
+    NSString *dbFileName = [options objectForKey:@"dbname"];
 
     if (dbFileName == NULL) {
         // Should not happen:
         DLog(@"No db name specified for close");
         pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"You must specify database path"];
     } else {
-        NSValue *val = [openDBs objectForKey:dbFileName];
+        NSString *dbConnectionName = [SQLitePlugin getDbConnectionNameForDb: dbFileName withOptions: options];
+        NSValue *val = [openDBs objectForKey:dbConnectionName];
         sqlite3 *db = [val pointerValue];
 
         if (db == NULL) {
@@ -202,7 +203,7 @@
         else {
             DLog(@"close db name: %@", dbFileName);
             sqlite3_close (db);
-            [openDBs removeObjectForKey:dbFileName];
+            [openDBs removeObjectForKey:dbConnectionName];
             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:@"DB closed"];
         }
     }
@@ -237,7 +238,16 @@
         if ([[NSFileManager defaultManager]fileExistsAtPath:dbPath]) {
             DLog(@"delete full db path: %@", dbPath);
             [[NSFileManager defaultManager]removeItemAtPath:dbPath error:nil];
-            [openDBs removeObjectForKey:dbFileName];
+            
+            // Remove all connections associated to this DB
+            for (NSString *key in [openDBs allKeys]) {
+                NSValue *dbPointer = [openDBs objectForKey:key];
+                const char *obtainedPath = sqlite3_db_filename([dbPointer pointerValue], [@"main" UTF8String]);
+                
+                if ([dbPath isEqualToString:[NSString stringWithUTF8String:obtainedPath]]) {
+                    [openDBs removeObjectForKey:key];
+                }
+            }
             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:@"DB deleted"];
         } else {
             DLog(@"delete: db was not found: %@", dbPath);

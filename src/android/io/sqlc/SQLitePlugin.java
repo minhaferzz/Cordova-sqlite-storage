@@ -95,9 +95,10 @@ public class SQLitePlugin extends CordovaPlugin {
 
             case close:
                 o = args.getJSONObject(0);
-                dbname = o.getString("path");
+                dbname = o.getString("dbname");
+
                 // put request in the q to close the db
-                this.closeDatabase(dbname, cbc);
+                this.closeDatabase(getDBConnectionName(dbname, o), cbc);
                 break;
 
             case delete:
@@ -264,7 +265,7 @@ public class SQLitePlugin extends CordovaPlugin {
     }
 
     private void deleteDatabase(String dbname, CallbackContext cbc) {
-        DBRunner r = dbrmap.get(dbname);
+        DBRunner r = getRunnerForDb(dbname);
         if (r != null) {
             try {
                 r.q.put(new DBQuery(true, cbc));
@@ -374,18 +375,8 @@ public class SQLitePlugin extends CordovaPlugin {
                     if (!dbq.delete) {
                         dbq.cbc.success();
                     } else {
-                        try {
-                            boolean deleteResult = deleteDatabaseNow(dbname);
-                            if (deleteResult) {
-                                dbq.cbc.success();
-                            } else {
-                                dbq.cbc.error("couldn't delete database");
-                            }
-                        } catch (Exception e) {
-                            Log.e(SQLitePlugin.class.getSimpleName(), "couldn't delete database", e);
-                            dbq.cbc.error("couldn't delete database: " + e);
-                        }
-                    }                    
+                        deleteDatabase(dbname, dbq.cbc);
+                    }
                 } catch (Exception e) {
                     Log.e(SQLitePlugin.class.getSimpleName(), "couldn't close database", e);
                     if (dbq.cbc != null) {
@@ -394,6 +385,15 @@ public class SQLitePlugin extends CordovaPlugin {
                 }
             }
         }
+    }
+
+    private DBRunner getRunnerForDb(String dbName) {
+        for (DBRunner runner : dbrmap.values()) {
+            if (runner.dbname.equals(dbName)) {
+                return runner;
+            }
+        }
+        return null;
     }
 
     private final class DBQuery {
