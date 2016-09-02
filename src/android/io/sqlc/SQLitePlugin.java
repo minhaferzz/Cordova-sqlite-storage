@@ -351,14 +351,10 @@ public class SQLitePlugin extends CordovaPlugin {
                 dbq = q.take();
 
                 while (!dbq.stop) {
-                    try {
-                        mydb.executeSqlBatch(dbq.queries, dbq.jsonparams, dbq.cbc);
+                    mydb.executeSqlBatch(dbq.queries, dbq.jsonparams, dbq.cbc);
 
-                        if (this.bugWorkaround && dbq.queries.length == 1 && dbq.queries[0] == "COMMIT")
-                            mydb.bugWorkaround();
-                    } catch (Exception e) {
-                        Log.e(SQLitePlugin.class.getSimpleName(), "unexpected error", e);
-                    }
+                    if (this.bugWorkaround && dbq.queries.length == 1 && dbq.queries[0] == "COMMIT")
+                        mydb.bugWorkaround();
 
                     dbq = q.take();
                 }
