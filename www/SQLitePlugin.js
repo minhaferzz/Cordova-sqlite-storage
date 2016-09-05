@@ -201,17 +201,24 @@
                 _this.openDBs[_this.dbname].state = DB_STATE_OPEN;
                 _this.openDBs[_this.dbname].connections.push(connectionName);
               }
+              
+              var callSuccessAndStartTransaction = function () {
+                if (!!success) {
+                  success(_this);
+                }
+                txLock = txLocks[_this.dbname];
+                if (!!txLock && txLock.queue.length > 0) {
+                  _this.startNextTransaction();
+                }
+              };
+              
               if (maxConnections > 1) {
                 // Otherwise readers will be blocked by writers
-                _this.executeSql('PRAGMA journal_mode = WAL;', []);
+                _this.executeSql('PRAGMA journal_mode = WAL;', [], callSuccessAndStartTransaction);
+              } else {
+                callSuccessAndStartTransaction();
               }
-              if (!!success) {
-                success(_this);
-              }
-              txLock = txLocks[_this.dbname];
-              if (!!txLock && txLock.queue.length > 0) {
-                _this.startNextTransaction();
-              }
+              
             };
         };
       })(this);
