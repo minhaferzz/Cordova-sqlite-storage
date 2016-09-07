@@ -1,12 +1,12 @@
-* OutSystems' version of SQLite cordova adapter
+# OutSystems' version of SQLite cordova adapter
 
-SQLite cordova interface based on =storage-master= branch of [[https://github.com/litehelpers/Cordova-sqlite-storage][litehelpers / Cordova-sqlite-storage]] customized to provide:
+SQLite cordova interface based on *storage-master* branch of [litehelpers / Cordova-sqlite-storage](https://github.com/litehelpers/Cordova-sqlite-storage) customized to provide:
 
 - Support for multiple transactions running concurrently (using multiple connections)
 
 Below is an updated version of the source branch's README for further documentation, as of the last merge.
 
-* Original README information
+# Original README information
 
 # Cordova/PhoneGap sqlite storage adapter
 
