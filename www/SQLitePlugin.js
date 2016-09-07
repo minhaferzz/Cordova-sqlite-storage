@@ -270,19 +270,30 @@
         console.log('closing db with no transaction lock state');
       }
       
-      var dbname = this.dbname;
-      var closePromises = connections.map(function (connectionName) { 
-        return new Promise(function (resolve, reject) {
-          cordova.exec(resolve, reject, "SQLitePlugin", "close", [
-            {
-              dbname: dbname,
-              connectionName: connectionName
-            }
-          ]);
-        });
-      });
+      var closedConnections = 0;
+      var closeConnectionSuccessCb = function () {
+        closedConnections++;
+        if (closedConnections == connections.length) {
+          return success();
+        }
+      };
       
-      Promise.all(closePromises).then(success).catch(error);
+      var closeErrorOccurred = false;
+      var closeConnectionErrorCb = function (e) {
+        if (!closeErrorOccurred) {
+          closeErrorOccurred = true;
+          return error(e);
+        }
+      };
+      
+      for (var i = 0; i < connections.length; i++) {
+        cordova.exec(closeConnectionSuccessCb, closeConnectionErrorCb, "SQLitePlugin", "close", [
+          {
+            dbname: this.dbname,
+            connectionName: connections[i]
+          }
+        ]);
+      }
     } else {
       console.log('cannot close: database is not open');
       if (error) {
