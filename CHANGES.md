@@ -1,5 +1,9 @@
 # Changes
 
+### cordova-sqlite-storage 1.4.5-os
+
+- Added support for multiple connections to the same database (enable some concurrency)
+
 ### cordova-sqlite-storage 1.4.5
 
 - Log/error message fixes; remove extra qid from internal JSON interface
