@@ -238,24 +238,32 @@
       };
 
       var self = this;
+      var copyOptions = function() {
+        var options = {};
+        var optionNames = Object.keys(self.openargs);
+        for (var i = 0; i < optionNames.length; i++) {
+          options[optionNames[i]] = self.openargs[optionNames[i]];
+        }
+        return options;
+      }
+
       var openNext = function openNext(connNumber) {
 
-        var options = {};
-        for (var key in self.openargs) {
-          options[key] = self.openargs[key];
-        }
+        var options = copyOptions();
 
         var connectionName = 'connection' + connNumber;
-        options['connectionName'] = connectionName;
         var onSuccess = opensuccesscb(connectionName);
+        options['connectionName'] = connectionName;
 
         cordova.exec(function() {
           onSuccess();
-          if (0 <-- connNumber) { openNext(connNumber); }
+          if (connNumber < maxConnections) {
+            openNext(connNumber + 1);
+          }
         }, openerrorcb, "SQLitePlugin", "open", [options]);        
       };
 
-      openNext(maxConnections);
+      openNext(0);
     }
   };
 
