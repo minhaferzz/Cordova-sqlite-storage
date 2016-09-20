@@ -186,7 +186,15 @@
         };
       })(this));
     } else {
-      var maxConnections = 4;
+
+      var maxConnections = 4, okConnections = 0; 
+      var failed = false;
+      var successOnce = function(sqlitePlugin) {
+        okConnections++;
+        if (!failed && okConnections == maxConnections) {
+          success(sqlitePlugin);
+        }
+      }
       
       console.log('OPEN database: ' + this.dbname);
       opensuccesscb = (function(_this) {
@@ -204,7 +212,7 @@
               
               var callSuccessAndStartTransaction = function () {
                 if (!!success) {
-                  success(_this);
+                  successOnce(_this);
                 }
                 txLock = txLocks[_this.dbname];
                 if (!!txLock && txLock.queue.length > 0) {
@@ -224,6 +232,7 @@
       })(this);
       openerrorcb = (function(_this) {
         return function() {
+          failed = true;
           console.log('OPEN database: ' + _this.dbname + ' FAILED, aborting any pending transactions');
           if (!!error) {
             error(newSQLError('Could not open database'));
