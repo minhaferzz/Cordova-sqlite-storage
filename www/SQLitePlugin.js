@@ -127,16 +127,14 @@
   };
 
   SQLitePlugin.prototype.startNextTransaction = function() {
-    var self;
-    self = this;
-    nextTick((function(_this) {
-      return function() {
+    var _this = this;
+    nextTick(function() {
         var txLock;
         if (!(_this.dbname in _this.openDBs) || _this.openDBs[_this.dbname].state !== DB_STATE_OPEN) {
           console.log('cannot start next transaction: database not open');
           return;
         }
-        txLock = txLocks[self.dbname];
+        txLock = txLocks[_this.dbname];
         if (!txLock) {
           console.log('cannot start next transaction: database connection is lost');
           return;
@@ -158,8 +156,7 @@
               }
             }
         }
-      };
-    })(this));
+      });
   };
 
   SQLitePlugin.prototype.abortAllPendingTransactions = function() {
@@ -178,19 +175,26 @@
 
   SQLitePlugin.prototype.open = function(success, error) {
     var openerrorcb, opensuccesscb;
+    var _this = this;
+
     if (this.dbname in this.openDBs) {
       console.log('database already open: ' + this.dbname);
-      nextTick((function(_this) {
-        return function() {
+      nextTick(function() {
           success(_this);
-        };
-      })(this));
+        });
     } else {
-      var maxConnections = 4;
+
+      var maxConnections = 4, okConnections = 0; 
+      var failed = false;
+      var successOnce = function(sqlitePlugin) {
+        okConnections++;
+        if (!failed && okConnections == maxConnections) {
+          success(sqlitePlugin);
+        }
+      }
       
       console.log('OPEN database: ' + this.dbname);
-      opensuccesscb = (function(_this) {
-        return function(connectionName) {
+      opensuccesscb = function(connectionName) {
             return function() {
               var txLock;
               console.log('OPEN database: ' + _this.dbname + ', connection: ' + connectionName + ' - OK');
@@ -204,7 +208,7 @@
               
               var callSuccessAndStartTransaction = function () {
                 if (!!success) {
-                  success(_this);
+                  successOnce(_this);
                 }
                 txLock = txLocks[_this.dbname];
                 if (!!txLock && txLock.queue.length > 0) {
@@ -221,33 +225,47 @@
               
             };
         };
-      })(this);
-      openerrorcb = (function(_this) {
-        return function() {
+      openerrorcb = function() {
           console.log('OPEN database: ' + _this.dbname + ' FAILED, aborting any pending transactions');
-          if (!!error) {
+          if (!!error && !failed) {
             error(newSQLError('Could not open database'));
           }
+          failed = true;
           delete _this.openDBs[_this.dbname];
           _this.abortAllPendingTransactions();
         };
-      })(this);
       this.openDBs[this.dbname] = { 
         state: DB_STATE_INIT,
         connections: []
       };
 
-      var options = {};
-      for (var key in this.openargs) {
-        options[key] = this.openargs[key];
+      var copyOptions = function() {
+        var options = {};
+        var optionNames = Object.keys(_this.openargs);
+        for (var i = 0; i < optionNames.length; i++) {
+          options[optionNames[i]] = _this.openargs[optionNames[i]];
+        }
+        return options;
       }
 
-      for (var i = 0; i < maxConnections; i++) {
-        var connectionName = 'connection' + i;
+      var openNext = function openNext(connNumber) {
+
+        connNumber++;
+
+        var options = copyOptions();
+        var connectionName = 'connection' + connNumber;
+        var onSuccess = opensuccesscb(connectionName);
         options['connectionName'] = connectionName;
 
-        cordova.exec(opensuccesscb(connectionName), openerrorcb, "SQLitePlugin", "open", [options]);
-      }
+        cordova.exec(function() {
+          onSuccess();
+          if (connNumber < maxConnections) {
+            openNext(connNumber);
+          }
+        }, openerrorcb, "SQLitePlugin", "open", [options]);        
+      };
+
+      openNext(0);
     }
   };
 
