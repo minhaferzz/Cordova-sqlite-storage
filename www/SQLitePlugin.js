@@ -226,11 +226,11 @@
             };
         };
       openerrorcb = function() {
-          failed = true;
           console.log('OPEN database: ' + _this.dbname + ' FAILED, aborting any pending transactions');
-          if (!!error) {
+          if (!!error && !failed) {
             error(newSQLError('Could not open database'));
           }
+          failed = true;
           delete _this.openDBs[_this.dbname];
           _this.abortAllPendingTransactions();
         };
@@ -250,8 +250,9 @@
 
       var openNext = function openNext(connNumber) {
 
-        var options = copyOptions();
+        connNumber++;
 
+        var options = copyOptions();
         var connectionName = 'connection' + connNumber;
         var onSuccess = opensuccesscb(connectionName);
         options['connectionName'] = connectionName;
@@ -259,7 +260,7 @@
         cordova.exec(function() {
           onSuccess();
           if (connNumber < maxConnections) {
-            openNext(connNumber + 1);
+            openNext(connNumber);
           }
         }, openerrorcb, "SQLitePlugin", "open", [options]);        
       };
