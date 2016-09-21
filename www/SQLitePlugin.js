@@ -127,14 +127,14 @@
   };
 
   SQLitePlugin.prototype.startNextTransaction = function() {
-    var self = this;
+    var _this = this;
     nextTick(function() {
         var txLock;
-        if (!(self.dbname in self.openDBs) || self.openDBs[self.dbname].state !== DB_STATE_OPEN) {
+        if (!(_this.dbname in _this.openDBs) || _this.openDBs[_this.dbname].state !== DB_STATE_OPEN) {
           console.log('cannot start next transaction: database not open');
           return;
         }
-        txLock = txLocks[self.dbname];
+        txLock = txLocks[_this.dbname];
         if (!txLock) {
           console.log('cannot start next transaction: database connection is lost');
           return;
