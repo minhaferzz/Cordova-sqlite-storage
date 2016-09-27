@@ -195,7 +195,7 @@
       
       console.log('OPEN database: ' + this.dbname);
       opensuccesscb = function(connectionName) {
-            return function() {
+            return function(continueCb) {
               var txLock;
               console.log('OPEN database: ' + _this.dbname + ', connection: ' + connectionName + ' - OK');
               if (!_this.openDBs[_this.dbname]) {
@@ -207,6 +207,7 @@
               }
               
               var callSuccessAndStartTransaction = function () {
+                continueCb();
                 if (!!success) {
                   successOnce(_this);
                 }
@@ -258,10 +259,11 @@
         options['connectionName'] = connectionName;
 
         cordova.exec(function() {
-          onSuccess();
-          if (connNumber < maxConnections) {
-            openNext(connNumber);
-          }
+          onSuccess(function() {
+            if (connNumber < maxConnections) {
+              openNext(connNumber);
+            }
+          });
         }, openerrorcb, "SQLitePlugin", "open", [options]);        
       };
 
