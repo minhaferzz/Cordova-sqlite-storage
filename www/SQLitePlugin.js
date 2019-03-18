@@ -269,11 +269,11 @@
               });
             }, openerrorcb, "SQLitePlugin", "open", [options]);
           };
-        })(this);
+        })(_this);
 
         cordova.exec(step2, step2, 'SQLitePlugin', 'close', [
           {
-            dbname: this.dbname,
+            dbname: _this.dbname,
             connectionName: connectionName
           }
         ]);
