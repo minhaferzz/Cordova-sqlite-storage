@@ -530,16 +530,18 @@
             txFailure = newSQLError(err);
           }
         }
-        if (--waiting === 0) {
-          if (txFailure) {
-            tx.executes = [];
-            tx.abort(txFailure);
-          } else if (tx.executes.length > 0) {
-            tx.run();
-          } else {
-            tx.finish();
+        setTimeout(function() {
+          if (--waiting === 0) {
+            if (txFailure) {
+              tx.executes = [];
+              tx.abort(txFailure);
+            } else if (tx.executes.length > 0) {
+              tx.run();
+            } else {
+              tx.finish();
+            }
           }
-        }
+        }, 0);
       };
     };
     mycbmap = {};
