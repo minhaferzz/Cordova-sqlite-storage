@@ -85,7 +85,8 @@
   };
 
   SQLitePlugin.prototype.databaseFeatures = {
-    isSQLitePluginDatabase: true
+    isSQLitePluginDatabase: true,
+    hasPromiseSupport: true
   };
 
   SQLitePlugin.prototype.openDBs = {};
