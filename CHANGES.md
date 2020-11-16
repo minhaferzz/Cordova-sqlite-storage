@@ -1,4 +1,6 @@
 # Changes
+### cordova-sqlite-storage 3.2.0-OS1
+- Added support for async calls
 
 ### cordova-sqlite-storage 3.2.0-OS
 - Added support for multiple connections to the same database (enable some concurrency)
