@@ -1,5 +1,5 @@
 # Changes
-### Unreleased
+### cordova-sqlite-storage 3.2.0-OS2
 - An hotfix was applied to ensure the support for Android 11 [RNMT-4515](https://outsystemsrd.atlassian.net/browse/RNMT-4515)
 
 ### cordova-sqlite-storage 3.2.0-OS1
