@@ -216,7 +216,20 @@ public class SQLitePlugin extends CordovaPlugin {
             Log.v("info", "Open sqlite db: " + dbfile.getAbsolutePath());
 
             SQLiteAndroidDatabase mydb = old_impl ? new SQLiteAndroidDatabase() : new SQLiteConnectorDatabase();
-            mydb.open(dbfile);
+            try {
+                mydb.open(dbfile);
+            } catch (Exception e) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                        mydb instanceof SQLiteConnectorDatabase &&
+                        (e instanceof NullPointerException || e instanceof java.sql.SQLException)) {
+                    Log.v(SQLitePlugin.class.getSimpleName(), "Applying hotfix for Android 11+");
+                    mydb = new SQLiteAndroidDatabase();
+                    mydb.open(dbfile);
+                }
+                else{
+                    throw e;
+                }
+            }
 
             if (cbc != null) // XXX Android locking/closing BUG workaround
                 cbc.success();
@@ -338,11 +351,6 @@ public class SQLitePlugin extends CordovaPlugin {
 
             this.q = new LinkedBlockingQueue<DBQuery>();
             this.openCbc = cbc;
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                Log.v(SQLitePlugin.class.getSimpleName(), "Applying hotfix for Android 11+");
-                this.oldImpl = true;
-            }
         }
 
         public void run() {
