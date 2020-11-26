@@ -1,4 +1,8 @@
 # Changes
+### cordova-sqlite-storage 3.2.0-OS3
+- Update cordova-sqlite-storage-dependencies dependency to version 2.0.0-OS1 [RNMT-4515](https://outsystemsrd.atlassian.net/browse/RNMT-4515)
+- Revert hotfix that was applied to ensure the support for Android 11 [RNMT-4515](https://outsystemsrd.atlassian.net/browse/RNMT-4515)
+
 ### cordova-sqlite-storage 3.2.0-OS2
 - An hotfix was applied to ensure the support for Android 11 [RNMT-4515](https://outsystemsrd.atlassian.net/browse/RNMT-4515)
 
