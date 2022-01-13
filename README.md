@@ -1,3 +1,13 @@
+# OutSystems' version of SQLite cordova adapter
+
+SQLite cordova interface based on *storage-master* branch of [litehelpers / Cordova-sqlite-storage](https://github.com/litehelpers/Cordova-sqlite-storage) customized to provide:
+
+- Support for multiple transactions running concurrently (using multiple connections)
+
+Below is an updated version of the source branch's README for further documentation, as of the last merge.
+
+# Original README information
+
 # Cross-platform SQLite storage plugin for Cordova/PhoneGap - cordova-sqlite-storage plugin version
 
 Native SQLite component with API based on HTML5/[Web SQL (DRAFT) API](http://www.w3.org/TR/webdatabase/) for the following platforms:

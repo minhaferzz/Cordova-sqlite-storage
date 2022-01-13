@@ -129,7 +129,8 @@
         [self.commandDelegate sendPluginResult:pluginResult callbackId: command.callbackId];
         return;
     } else {
-        NSValue *dbPointer = [openDBs objectForKey:dbfilename];
+        NSString *dbConnectionName = [SQLitePlugin getDbConnectionNameForDb: dbfilename withOptions: options];
+        NSValue *dbPointer = [openDBs objectForKey: dbConnectionName];
 
         if (dbPointer != NULL) {
             // NO LONGER EXPECTED due to BUG 666 workaround solution:
@@ -162,7 +163,7 @@
                 // Attempt to read the SQLite master table [to support SQLCipher version]:
                 if(sqlite3_exec(db, (const char*)"SELECT count(*) FROM sqlite_master;", NULL, NULL, NULL) == SQLITE_OK) {
                     dbPointer = [NSValue valueWithPointer:db];
-                    [openDBs setObject: dbPointer forKey: dbfilename];
+                    [openDBs setObject: dbPointer forKey: dbConnectionName];
                     pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:@"Database opened"];
                 } else {
                     pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Unable to open DB with key"];
@@ -189,14 +190,15 @@
     CDVPluginResult* pluginResult = nil;
     NSMutableDictionary *options = [command.arguments objectAtIndex:0];
 
-    NSString *dbFileName = [options objectForKey:@"path"];
+    NSString *dbFileName = [options objectForKey:@"dbname"];
 
     if (dbFileName == NULL) {
         // Should not happen:
         DLog(@"No db name specified for close");
         pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"INTERNAL PLUGIN ERROR: You must specify database path"];
     } else {
-        NSValue *val = [openDBs objectForKey:dbFileName];
+        NSString *dbConnectionName = [SQLitePlugin getDbConnectionNameForDb: dbFileName withOptions: options];
+        NSValue *val = [openDBs objectForKey:dbConnectionName];
         sqlite3 *db = [val pointerValue];
 
         if (db == NULL) {
@@ -207,7 +209,7 @@
         else {
             DLog(@"close db name: %@", dbFileName);
             sqlite3_close (db);
-            [openDBs removeObjectForKey:dbFileName];
+            [openDBs removeObjectForKey:dbConnectionName];
             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:@"DB closed"];
         }
     }
@@ -242,7 +244,16 @@
         if ([[NSFileManager defaultManager]fileExistsAtPath:dbPath]) {
             DLog(@"delete full db path: %@", dbPath);
             [[NSFileManager defaultManager]removeItemAtPath:dbPath error:nil];
-            [openDBs removeObjectForKey:dbFileName];
+            
+            // Remove all connections associated to this DB
+            for (NSString *key in [openDBs allKeys]) {
+                NSValue *dbPointer = [openDBs objectForKey:key];
+                const char *obtainedPath = sqlite3_db_filename([dbPointer pointerValue], [@"main" UTF8String]);
+                
+                if ([dbPath isEqualToString:[NSString stringWithUTF8String:obtainedPath]]) {
+                    [openDBs removeObjectForKey:key];
+                }
+            }
             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:@"DB deleted"];
         } else {
             DLog(@"delete: db was not found: %@", dbPath);
@@ -314,7 +325,8 @@
 
     NSMutableArray *params = [options objectForKey:@"params"]; // optional
 
-    NSValue *dbPointer = [openDBs objectForKey:dbFileName];
+    NSString *dbConnectionName = [SQLitePlugin getDbConnectionNameForDb: dbFileName withOptions: dbargs];
+    NSValue *dbPointer = [openDBs objectForKey: dbConnectionName];
     if (dbPointer == NULL) {
         return [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"INTERNAL PLUGIN ERROR: No such database, you must open it first"];
     }
@@ -526,5 +538,29 @@
             return UNKNOWN_ERR;
     }
 }
+
++(NSString*)getDbConnectionNameForDb:(NSString*)dbName
+                         withOptions:(NSMutableDictionary*)options
+{
+    NSString *connectionName = [options objectForKey:@"connectionName"];
+    if (connectionName == NULL) {
+        return dbName;
+    } else {
+        return [[dbName stringByAppendingString:@"_"] stringByAppendingString:connectionName];
+    }
+}
+
+#ifdef READ_BLOB_AS_BASE64
++(NSString*)getBlobAsBase64String:(const char*)blob_chars
+                       withLength:(int)blob_length
+{
+    // THANKS for guidance: http://stackoverflow.com/a/8354941/1283667
+    NSData * data = [NSData dataWithBytes: (const void *)blob_chars length: blob_length];
+
+    // THANKS for guidance:
+    // https://github.com/apache/cordova-ios/blob/master/guides/API%20changes%20in%204.0.md#nsdatabase64h-removed
+    return [data base64EncodedStringWithOptions:0];
+}
+#endif
 
 @end /* vim: set expandtab : */
