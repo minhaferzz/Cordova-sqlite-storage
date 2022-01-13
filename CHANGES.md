@@ -12,6 +12,8 @@
 ### cordova-sqlite-storage 3.2.0-OS
 - Added support for multiple connections to the same database (enable some concurrency)
 
+#### cordova-sqlite-storage 3.2.1-dev
+
 #### cordova-sqlite-storage 3.2.0
 
 - sqlite3_threadsafe() error handling on iOS/macOS
